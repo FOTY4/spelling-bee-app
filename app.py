@@ -2,53 +2,52 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pytesseract
 from PIL import Image
-from pillow_heif import register_heif_opener # <--- New translator
+from pillow_heif import register_heif_opener
 from gtts import gTTS
 import io
 import random
 import base64
 import time
 
-# Register the HEIC opener so Pillow can read iPhone photos
+# 1. iPhone Image Support
 register_heif_opener()
 
-# --- CONFIGURATION ---
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+st.set_page_config(page_title="AI Spelling Bee", layout="centered")
 
-st.set_page_config(page_title="🐝 AI Spelling Bee", layout="centered")
-
-# --- CSS FOR UI ---
+# --- CSS FOR MOBILE ---
 st.markdown("""
     <style>
     div.stButton > button {
-        height: 3.5em;
-        font-size: 18px !important;
+        height: 4em;
+        font-size: 20px !important;
         font-weight: bold;
-        border-radius: 12px;
+        border-radius: 15px;
+        background-color: #f0f2f6;
     }
-    .timer-text {
-        font-size: 20px;
-        text-align: center;
-        color: #FF4B4B;
-    }
+    h1 { text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- THE BULLETPROOF AUDIO FIX ---
+# --- THE iOS AUDIO FIX ---
 def play_audio(text):
+    """Generates audio and forces it to play using a fresh JS injection."""
     tts = gTTS(text=text, lang='en')
     mp3_fp = io.BytesIO()
     tts.write_to_fp(mp3_fp)
     b64 = base64.b64encode(mp3_fp.getvalue()).decode()
     
-    unique_id = f"audio_{int(time.time() * 1000)}"
+    # We use a unique key based on the current time to force the browser 
+    # to treat this as a brand-new user-initiated event.
+    unique_key = f"audio_{int(time.time() * 1000)}"
     
     components.html(
         f"""
-        <div id="{unique_id}_container"></div>
+        <div id="{unique_key}"></div>
         <script>
             var audio = new Audio("data:audio/mp3;base64,{b64}");
-            audio.play().catch(e => console.log("Playback failed:", e));
+            audio.play().catch(function(error) {{
+                console.log("iOS blocked autoplay. Ensuring user gesture is recognized.");
+            }});
         </script>
         """,
         height=0,
@@ -66,32 +65,26 @@ if 'revealed' not in st.session_state:
 st.title("🐝 AI Spelling Bee")
 
 with st.sidebar:
-    st.header("⚙️ Practice Settings")
-    auto_reveal = st.toggle("Auto-Reveal Word", value=True)
-    reveal_delay = st.slider("Seconds to wait:", 1, 10, 3)
-    
-    st.divider()
+    st.header("Settings")
     max_words = st.number_input("Words per test", min_value=1, value=10)
     randomize = st.checkbox("Randomize List", value=True)
-    
-    if st.button("🗑️ Start Over / New Scan"):
+    if st.button("🗑️ Clear and Start New Scan"):
         st.session_state.test_list = []
         st.session_state.current_index = 0
         st.rerun()
 
-# 1. SCANNING SECTION
+# 1. SCANNING
 if not st.session_state.test_list:
-    image_file = st.file_uploader("Upload word list photo", type=['png', 'jpg', 'jpeg', 'heic'])
+    st.write("### 📸 Scan your word list")
+    image_file = st.file_uploader("Upload or Take Photo", type=['png', 'jpg', 'jpeg', 'heic'])
 
     if image_file:
-        img = Image.open(image_file)
-        # CONVERT TO RGB: This strips out iPhone metadata that confuses Tesseract
-        img = img.convert("RGB")
-        
+        # The iPhone Fix: Convert to RGB to clear metadata
+        img = Image.open(image_file).convert("RGB")
         st.image(img, width=300)
-        if st.button("📝 Start Practice Session"):
-            with st.spinner("Extracting words..."):
-                # We pass the cleaned RGB image to Tesseract
+        
+        if st.button("📝 Load Words"):
+            with st.spinner("Reading words..."):
                 text = pytesseract.image_to_string(img)
                 extracted = [line.strip() for line in text.split('\n') if len(line.strip()) > 1]
                 
@@ -101,39 +94,33 @@ if not st.session_state.test_list:
                     st.session_state.test_list = extracted[:max_words]
                     st.rerun()
                 else:
-                    st.error("No text found. Check lighting/focus.")
+                    st.error("No words found. Ensure the photo is clear and bright.")
 
-# 2. TESTING SECTION
+# 2. TESTING
 else:
     word = st.session_state.test_list[st.session_state.current_index]
-    st.write(f"### Word {st.session_state.current_index + 1} of {len(st.session_state.test_list)}")
     
-    if st.button("🔊 READ WORD"):
+    st.write(f"**Word {st.session_state.current_index + 1} of {len(st.session_state.test_list)}**")
+    
+    # Audio Button
+    if st.button("🔊 READ ALOUD"):
         play_audio(word)
         
-        if auto_reveal and not st.session_state.revealed:
-            placeholder = st.empty()
-            for i in range(reveal_delay, 0, -1):
-                placeholder.markdown(f"<p class='timer-text'>Revealing in {i}...</p>", unsafe_allow_html=True)
-                time.sleep(1)
-            placeholder.empty()
-            st.session_state.revealed = True
-            st.rerun()
-            
     st.divider()
     
-    if not st.session_state.revealed:
-        if st.button("👁️ SHOW SPELLING"):
-            st.session_state.revealed = True
-            st.rerun()
+    # Reveal Logic
+    if st.button("👁️ SHOW SPELLING"):
+        st.session_state.revealed = True
+        st.rerun()
 
     if st.session_state.revealed:
-        st.markdown(f"<h1 style='text-align: center; color: #4CAF50;'>{word}</h1>", unsafe_allow_html=True)
+        st.markdown(f"<h1>{word}</h1>", unsafe_allow_html=True)
     else:
-        st.markdown("<h1 style='text-align: center; color: #ccc;'>????</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='color: #ccc;'>????</h1>", unsafe_allow_html=True)
 
     st.divider()
 
+    # Navigation
     if st.button("NEXT WORD ➡️"):
         if st.session_state.current_index < len(st.session_state.test_list) - 1:
             st.session_state.current_index += 1
@@ -142,7 +129,7 @@ else:
         else:
             st.balloons()
             st.success("Test Complete!")
-            if st.button("Restart Session"):
+            if st.button("Start New Test"):
                 st.session_state.test_list = []
                 st.rerun()
                 
