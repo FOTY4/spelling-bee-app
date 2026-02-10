@@ -1,57 +1,15 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pytesseract
 from PIL import Image
 from pillow_heif import register_heif_opener
 from gtts import gTTS
 import io
 import random
-import base64
-import time
 
-# 1. iPhone Image Support
+# 1. iPhone Image Support (HEIC)
 register_heif_opener()
 
 st.set_page_config(page_title="AI Spelling Bee", layout="centered")
-
-# --- CSS FOR MOBILE ---
-st.markdown("""
-    <style>
-    div.stButton > button {
-        height: 4em;
-        font-size: 20px !important;
-        font-weight: bold;
-        border-radius: 15px;
-        background-color: #f0f2f6;
-    }
-    h1 { text-align: center; }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- THE iOS AUDIO FIX ---
-def play_audio(text):
-    """Generates audio and forces it to play using a fresh JS injection."""
-    tts = gTTS(text=text, lang='en')
-    mp3_fp = io.BytesIO()
-    tts.write_to_fp(mp3_fp)
-    b64 = base64.b64encode(mp3_fp.getvalue()).decode()
-    
-    # We use a unique key based on the current time to force the browser 
-    # to treat this as a brand-new user-initiated event.
-    unique_key = f"audio_{int(time.time() * 1000)}"
-    
-    components.html(
-        f"""
-        <div id="{unique_key}"></div>
-        <script>
-            var audio = new Audio("data:audio/mp3;base64,{b64}");
-            audio.play().catch(function(error) {{
-                console.log("iOS blocked autoplay. Ensuring user gesture is recognized.");
-            }});
-        </script>
-        """,
-        height=0,
-    )
 
 # --- SESSION STATE ---
 if 'test_list' not in st.session_state:
@@ -68,22 +26,23 @@ with st.sidebar:
     st.header("Settings")
     max_words = st.number_input("Words per test", min_value=1, value=10)
     randomize = st.checkbox("Randomize List", value=True)
-    if st.button("🗑️ Clear and Start New Scan"):
+    if st.button("🗑️ New Scan / Clear"):
         st.session_state.test_list = []
         st.session_state.current_index = 0
         st.rerun()
 
-# 1. SCANNING
+# 1. SCANNING SECTION
 if not st.session_state.test_list:
-    st.write("### 📸 Scan your word list")
+    st.write("### 📸 1. Scan your word list")
     image_file = st.file_uploader("Upload or Take Photo", type=['png', 'jpg', 'jpeg', 'heic'])
 
     if image_file:
-        # The iPhone Fix: Convert to RGB to clear metadata
+        # iPhone Fix: Convert to RGB to clear metadata
         img = Image.open(image_file).convert("RGB")
         st.image(img, width=300)
         
-        if st.button("📝 Load Words"):
+        # Using type="primary" makes the button a solid, readable color
+        if st.button("📝 Load Words", type="primary", use_container_width=True):
             with st.spinner("Reading words..."):
                 text = pytesseract.image_to_string(img)
                 extracted = [line.strip() for line in text.split('\n') if len(line.strip()) > 1]
@@ -94,34 +53,38 @@ if not st.session_state.test_list:
                     st.session_state.test_list = extracted[:max_words]
                     st.rerun()
                 else:
-                    st.error("No words found. Ensure the photo is clear and bright.")
+                    st.error("No words found. Try a closer photo.")
 
-# 2. TESTING
+# 2. TESTING SECTION
 else:
     word = st.session_state.test_list[st.session_state.current_index]
     
     st.write(f"**Word {st.session_state.current_index + 1} of {len(st.session_state.test_list)}**")
     
-    # Audio Button
-    if st.button("🔊 READ ALOUD"):
-        play_audio(word)
+    # RELIABLE AUDIO: Standard Streamlit audio player
+    # This is the only method iOS doesn't block
+    tts = gTTS(text=word, lang='en')
+    mp3_fp = io.BytesIO()
+    tts.write_to_fp(mp3_fp)
+    
+    st.write("### 🔊 Listen:")
+    st.audio(mp3_fp, format="audio/mp3")
         
     st.divider()
     
-    # Reveal Logic
-    if st.button("👁️ SHOW SPELLING"):
-        st.session_state.revealed = True
-        st.rerun()
-
-    if st.session_state.revealed:
-        st.markdown(f"<h1>{word}</h1>", unsafe_allow_html=True)
+    # REVEAL SECTION
+    if not st.session_state.revealed:
+        if st.button("👁️ SHOW SPELLING", type="primary", use_container_width=True):
+            st.session_state.revealed = True
+            st.rerun()
     else:
-        st.markdown("<h1 style='color: #ccc;'>????</h1>", unsafe_allow_html=True)
+        # Show the word in large text
+        st.markdown(f"<h1 style='text-align: center; color: #4CAF50;'>{word}</h1>", unsafe_allow_html=True)
 
     st.divider()
 
-    # Navigation
-    if st.button("NEXT WORD ➡️"):
+    # NAVIGATION
+    if st.button("NEXT WORD ➡️", use_container_width=True):
         if st.session_state.current_index < len(st.session_state.test_list) - 1:
             st.session_state.current_index += 1
             st.session_state.revealed = False
