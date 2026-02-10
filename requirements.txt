@@ -1,6 +1,6 @@
 streamlit
 pytesseract
 gTTS
-
 Pillow
 pillow-heif
+requests
