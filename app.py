@@ -5,6 +5,7 @@ from pillow_heif import register_heif_opener
 from gtts import gTTS
 import io
 import random
+import base64
 
 # 1. iPhone Image Support (HEIC)
 register_heif_opener()
@@ -63,12 +64,20 @@ else:
     
     # RELIABLE AUDIO: Standard Streamlit audio player
     # This is the only method iOS doesn't block
+        # 1. Generate the audio in memory
     tts = gTTS(text=word, lang='en')
     mp3_fp = io.BytesIO()
     tts.write_to_fp(mp3_fp)
     
+    # 2. Convert to Base64 (This prevents the 'Error' on iPhone)
+    mp3_bytes = mp3_fp.getvalue()
+    b64 = base64.b64encode(mp3_bytes).decode()
+    audio_url = f"data:audio/mp3;base64,{b64}"
+    
     st.write("### 🔊 Listen:")
-    st.audio(mp3_fp, format="audio/mp3")
+    # Using the URL instead of the file object fixes the 'Error' message
+    st.audio(audio_url, format="audio/mp3")
+    
         
     st.divider()
     
@@ -96,3 +105,4 @@ else:
                 st.session_state.test_list = []
                 st.rerun()
                 
+
