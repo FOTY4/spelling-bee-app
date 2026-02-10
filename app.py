@@ -5,6 +5,7 @@ from gtts import gTTS
 import io
 import random
 import base64
+import time  
 
 # --- CONFIGURATION ---
 # If on Windows, ensure this path is correct:
@@ -14,13 +15,17 @@ st.set_page_config(page_title="AI Spelling Bee", layout="centered")
 
 # --- CUSTOM CSS & AUTOPLAY SCRIPT ---
 def play_audio(text):
-    """Generates audio and injects HTML to autoplay it."""
+    """Generates audio and injects HTML to autoplay it with a unique ID."""
     tts = gTTS(text=text, lang='en')
     mp3_fp = io.BytesIO()
     tts.write_to_fp(mp3_fp)
     b64 = base64.b64encode(mp3_fp.getvalue()).decode()
+    
+    # We add a unique 'timestamp' so the browser always sees this as a new element
+    unique_id = str(time.time()).replace('.', '')
+    
     md = f"""
-        <audio autoplay="true">
+        <audio autoplay="true" id="{unique_id}">
         <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
         </audio>
     """
